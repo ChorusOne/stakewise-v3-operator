@@ -22,7 +22,7 @@ from src.config.settings import DEPOSIT_AMOUNT, settings
 from src.validators.database import NetworkValidatorCrud
 from src.validators.typings import (
     DepositData,
-    Keystores,
+    ValidatorKeys,
     NetworkValidator,
     OraclesApproval,
     Validator,
@@ -162,7 +162,7 @@ async def check_deposit_data_root(deposit_data_root: str) -> None:
 
 
 async def get_available_validators(
-    keystores: Keystores, deposit_data: DepositData, count: int
+    keystores: ValidatorKeys, deposit_data: DepositData, count: int
 ) -> list[Validator]:
     """Fetches vault's available validators."""
     await check_deposit_data_root(deposit_data.tree.root)
@@ -195,7 +195,7 @@ async def get_available_validators(
 
 
 async def update_unused_validator_keys_metric(
-    keystores: Keystores, deposit_data: DepositData
+    keystores: ValidatorKeys, deposit_data: DepositData
 ) -> int:
     try:
         await check_deposit_data_root(deposit_data.tree.root)

@@ -3,6 +3,8 @@ import dataclasses
 import json
 import logging
 import random
+import requests
+import urllib.parse
 from multiprocessing import Pool
 from os import listdir
 from os.path import isfile, join
@@ -34,7 +36,7 @@ from src.validators.typings import (
     BLSPrivkey,
     DepositData,
     KeystoreFile,
-    Keystores,
+    ValidatorKeys,
     Validator,
 )
 
@@ -152,38 +154,50 @@ def list_keystore_files() -> list[KeystoreFile]:
     return res
 
 
-def load_keystores() -> Keystores | None:
-    """Extracts private keys from the keystores."""
+def load_validator_keys() -> ValidatorKeys | None:
+    """Extracts private keys from the keystores or Hashicorp Vault."""
 
-    keystore_files = list_keystore_files()
-    logger.info('Loading keystores from %s...', settings.keystores_dir)
-    with Pool() as pool:
-        # pylint: disable-next=unused-argument
-        def _stop_pool(*args, **kwargs):
-            pool.close()
+    keys = []
+    if settings.hashicorp_vault:
+        request_url = urllib.parse.urljoin(
+            settings.hashicorp_vault.addr, f"/v1/secret/data/{settings.hashicorp_vault.key}"
+        )
+        key_data = requests.get(
+            request_url, headers={"X-Vault-Token": settings.hashicorp_vault.token}
+        ).json()
+        for pk, sk in key_data["data"]["data"].items():
+            sk_bytes = Web3.to_bytes(hexstr=sk)
+            keys.append((HexStr(pk), BLSPrivkey(sk_bytes)))
+        validator_keys = ValidatorKeys(dict(keys))
+    else:
+        keystore_files = list_keystore_files()
+        logger.info('Loading keystores from %s...', settings.keystores_dir)
+        with Pool() as pool:
+            # pylint: disable-next=unused-argument
+            def _stop_pool(*args, **kwargs):
+                pool.close()
 
-        results = [
-            pool.apply_async(
-                _process_keystore_file,
-                (keystore_file, settings.keystores_dir),
-                error_callback=_stop_pool,
-            )
-            for keystore_file in keystore_files
-        ]
-        keys = []
-        for result in results:
-            result.wait()
-            try:
-                keys.append(result.get())
-            except KeystoreException as e:
-                logger.error(e)
-                return None
+            results = [
+                pool.apply_async(
+                    _process_keystore_file,
+                    (keystore_file, settings.keystores_dir),
+                    error_callback=_stop_pool,
+                )
+                for keystore_file in keystore_files
+            ]
+            for result in results:
+                result.wait()
+                try:
+                    keys.append(result.get())
+                except KeystoreException as e:
+                    logger.error(e)
+                    return None
 
-        existing_keys: list[tuple[HexStr, BLSPrivkey]] = [key for key in keys if key]
-        keystores = Keystores(dict(existing_keys))
+    existing_keys: list[tuple[HexStr, BLSPrivkey]] = [key for key in keys if key]
+    validator_keys = ValidatorKeys(dict(existing_keys))
 
-    logger.info('Loaded %d keystores', len(keystores))
-    return keystores
+    logger.info('Loaded %d validator keys', len(validator_keys))
+    return validator_keys
 
 
 def load_deposit_data(vault: HexAddress, deposit_data_file: Path) -> DepositData:

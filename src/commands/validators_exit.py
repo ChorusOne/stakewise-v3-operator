@@ -17,12 +17,12 @@ from src.common.utils import log_verbose
 from src.common.validators import validate_eth_address
 from src.common.vault_config import VaultConfig
 from src.config.settings import AVAILABLE_NETWORKS, NETWORKS, settings
-from src.validators.typings import BLSPrivkey, Keystores
-from src.validators.utils import load_keystores
+from src.validators.typings import BLSPrivkey, ValidatorKeys
+from src.validators.utils import load_validator_keys
 
 
 @dataclass
-class ExitKeystore:
+class ExitKeyMaterial:
     private_key: BLSPrivkey
     public_key: HexStr
     index: int
@@ -73,6 +73,22 @@ EXITING_STATUSES = [ValidatorStatus.ACTIVE_EXITING] + EXITED_STATUSES
     envvar='VERBOSE',
     is_flag=True,
 )
+@click.option(
+    '--hashicorp-vault-addr',
+    callback=validate_eth_address,
+    envvar='HASHICORP_VAULT_ADDR',
+    help='Address of the vault to register validators for.',
+)
+@click.option(
+    '--hashicorp-vault-token',
+    envvar='HASHICORP_VAULT_TOKEN',
+    help='Token for accessing Hashicopr vault.',
+)
+@click.option(
+    '--hashicorp-vault-key',
+    envvar='HASHICORP_VAULT_KEY',
+    help='Key of the secret where signing keys are stored. Compatible with format recognized by Web3Signer',
+)
 @click.command(help='Performs a voluntary exit for active vault validators.')
 # pylint: disable-next=too-many-arguments
 def validators_exit(
@@ -82,6 +98,9 @@ def validators_exit(
     consensus_endpoints: str,
     data_dir: str,
     verbose: bool,
+    hashicorp_vault_addr: str | None,
+    hashicorp_vault_token: str | None,
+    hashicorp_vault_key: str | None,
 ) -> None:
     # pylint: disable=duplicate-code
     vault_config = VaultConfig(vault, Path(data_dir))
@@ -95,6 +114,9 @@ def validators_exit(
         vault_dir=vault_config.vault_dir,
         consensus_endpoints=consensus_endpoints,
         verbose=verbose,
+        hashicorp_vault_addr=hashicorp_vault_addr,
+        hashicorp_vault_key=hashicorp_vault_key,
+        hashicorp_vault_token=hashicorp_vault_token,
     )
     try:
         asyncio.run(main(count))
@@ -103,12 +125,12 @@ def validators_exit(
 
 
 async def main(count: int | None) -> None:
-    keystores = load_keystores()
+    keystores = load_validator_keys()
     if not keystores:
         raise click.ClickException('Keystores not found.')
     fork = await consensus_client.get_consensus_fork()
 
-    exit_keystores = await _get_exit_keystores(keystores)
+    exit_keystores = await _get_exit_key_material(keystores)
     if not exit_keystores:
         raise click.ClickException('There are no active validators.')
 
@@ -164,10 +186,10 @@ def _get_exit_signature(
     return exit_signature
 
 
-async def _get_exit_keystores(keystores: Keystores) -> list[ExitKeystore]:
+async def _get_exit_key_material(validator_keys: ValidatorKeys) -> list[ExitKeyMaterial]:
     """Fetches validators consensus info."""
     results = []
-    public_keys = list(keystores.keys())
+    public_keys = list(validator_keys.keys())
     exited_statuses = [x.value for x in EXITING_STATUSES]
 
     for i in range(0, len(public_keys), settings.validators_fetch_chunk_size):
@@ -179,9 +201,9 @@ async def _get_exit_keystores(keystores: Keystores) -> list[ExitKeystore]:
                 continue
 
             results.append(
-                ExitKeystore(
+                ExitKeyMaterial(
                     public_key=beacon_validator['validator']['pubkey'],
-                    private_key=keystores[beacon_validator['validator']['pubkey']],
+                    private_key=validator_keys[beacon_validator['validator']['pubkey']],
                     index=int(beacon_validator['index']),
                 )
             )

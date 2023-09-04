@@ -25,7 +25,7 @@ from src.validators.signing import get_exit_signature_shards, get_validators_pro
 from src.validators.typings import (
     ApprovalRequest,
     DepositData,
-    Keystores,
+    ValidatorKeys,
     NetworkValidator,
     OraclesApproval,
     Validator,
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 # pylint: disable-next=too-many-locals
-async def register_validators(keystores: Keystores, deposit_data: DepositData) -> None:
+async def register_validators(keystores: ValidatorKeys, deposit_data: DepositData) -> None:
     """Registers vault validators."""
     vault_balance, update_state_call = await get_withdrawable_assets()
     if settings.network == GNOSIS:
@@ -124,7 +124,7 @@ async def register_validators(keystores: Keystores, deposit_data: DepositData) -
 
 async def create_approval_request(
     oracles: Oracles,
-    keystores: Keystores,
+    keystores: ValidatorKeys,
     validators: list[Validator],
     registry_root: Bytes32,
     multi_proof: MultiProof,

@@ -6,7 +6,7 @@ from multiproof import StandardMerkleTree
 from sw_utils.typings import Bytes32
 
 BLSPrivkey = NewType('BLSPrivkey', bytes)
-Keystores = NewType('Keystores', dict[HexStr, BLSPrivkey])
+ValidatorKeys = NewType('Keystores', dict[HexStr, BLSPrivkey])
 
 
 @dataclass

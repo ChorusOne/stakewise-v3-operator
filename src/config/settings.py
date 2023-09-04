@@ -4,8 +4,8 @@ from decouple import Csv
 from decouple import config as decouple_config
 from web3 import Web3
 from web3.types import ChecksumAddress
-
 from src.config.networks import GOERLI, NETWORKS, NetworkConfig
+from src.config.typings import HashicorpVaultSettings
 
 DATA_DIR = Path.home() / '.stakewise'
 
@@ -47,6 +47,7 @@ class Settings(metaclass=Singleton):
     ipfs_fetch_endpoints: list[str]
     validators_fetch_chunk_size: int
     sentry_dsn: str
+    hashicorp_vault: HashicorpVaultSettings | None
 
     # pylint: disable-next=too-many-arguments,too-many-locals
     def set(
@@ -67,6 +68,9 @@ class Settings(metaclass=Singleton):
         hot_wallet_file: str | None = None,
         hot_wallet_password_file: str | None = None,
         database_dir: str | None = None,
+        hashicorp_vault_addr: str | None = None,
+        hashicorp_vault_token: str | None = None,
+        hashicorp_vault_key: str | None = None,
     ):
         self.vault = Web3.to_checksum_address(vault)
         self.vault_dir = vault_dir
@@ -95,6 +99,14 @@ class Settings(metaclass=Singleton):
             if keystores_password_file
             else vault_dir / 'keystores' / 'password.txt'
         )
+
+        # vault
+        if hashicorp_vault_addr:
+            self.hashicorp_vault = HashicorpVaultSettings(
+                hashicorp_vault_addr, hashicorp_vault_key, hashicorp_vault_token
+            )
+        else:
+            self.hashicorp_vault = None
 
         # hot wallet
         self.hot_wallet_file = (

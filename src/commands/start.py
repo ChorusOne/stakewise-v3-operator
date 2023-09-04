@@ -31,7 +31,7 @@ from src.validators.execution import (
     update_unused_validator_keys_metric,
 )
 from src.validators.tasks import load_genesis_validators, register_validators
-from src.validators.utils import load_deposit_data, load_keystores
+from src.validators.utils import load_deposit_data, load_validator_keys
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +151,21 @@ logger = logging.getLogger(__name__)
     prompt='Enter the vault address',
     help='Address of the vault to register validators for.',
 )
+@click.option(
+    '--hashicorp-vault-addr',
+    envvar='HASHICORP_VAULT_ADDR',
+    help='Address of the vault to register validators for.',
+)
+@click.option(
+    '--hashicorp-vault-token',
+    envvar='HASHICORP_VAULT_TOKEN',
+    help='Token for accessing Hashicopr vault.',
+)
+@click.option(
+    '--hashicorp-vault-key',
+    envvar='HASHICORP_VAULT_KEY',
+    help='Key of the secret where signing keys are stored. Compatible with format recognized by Web3Signer',
+)
 @click.command(help='Start operator service')
 # pylint: disable-next=too-many-arguments,too-many-locals
 def start(
@@ -170,6 +185,9 @@ def start(
     hot_wallet_password_file: str | None,
     max_fee_per_gas_gwei: int,
     database_dir: str | None,
+    hashicorp_vault_addr: str | None,
+    hashicorp_vault_token: str | None,
+    hashicorp_vault_key: str | None,
 ) -> None:
     vault_config = VaultConfig(vault, Path(data_dir))
     if network is None:
@@ -193,6 +211,9 @@ def start(
         hot_wallet_password_file=hot_wallet_password_file,
         max_fee_per_gas_gwei=max_fee_per_gas_gwei,
         database_dir=database_dir,
+        hashicorp_vault_addr=hashicorp_vault_addr,
+        hashicorp_vault_key=hashicorp_vault_key,
+        hashicorp_vault_token=hashicorp_vault_token,
     )
 
     try:
@@ -213,9 +234,9 @@ async def main() -> None:
     # load network validators from ipfs dump
     await load_genesis_validators()
 
-    # load keystores
-    keystores = load_keystores()
-    if not keystores:
+    # load validator keys
+    validator_keys = load_validator_keys()
+    if not validator_keys:
         return
 
     # load deposit data
@@ -235,7 +256,7 @@ async def main() -> None:
     await metrics_server()
 
     # process outdated exit signatures
-    asyncio.create_task(update_exit_signatures_periodically(keystores))
+    asyncio.create_task(update_exit_signatures_periodically(validator_keys))
 
     logger.info('Started operator service')
     with InterruptHandler() as interrupt_handler:
@@ -249,8 +270,8 @@ async def main() -> None:
                 # process new network validators
                 await network_validators_scanner.process_new_events(to_block)
                 # check and register new validators
-                await update_unused_validator_keys_metric(keystores, deposit_data)
-                await register_validators(keystores, deposit_data)
+                await update_unused_validator_keys_metric(validator_keys, deposit_data)
+                await register_validators(validator_keys, deposit_data)
 
                 # submit harvest vault transaction
                 if settings.harvest_vault:

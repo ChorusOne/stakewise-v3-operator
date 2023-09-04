@@ -25,7 +25,7 @@ from src.exits.execution import submit_exit_signatures
 from src.exits.typings import OraclesApproval, SignatureRotationRequest
 from src.exits.utils import send_signature_rotation_requests
 from src.validators.signing import get_exit_signature_shards
-from src.validators.typings import Keystores
+from src.validators.typings import ValidatorKeys
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ async def wait_oracle_signature_update(
 
 
 async def update_exit_signatures(
-    keystores: Keystores, oracles: Oracles, outdated_indexes: list[int]
+    keystores: ValidatorKeys, oracles: Oracles, outdated_indexes: list[int]
 ) -> HexStr:
     """Fetches update signature requests from oracles."""
     exit_rotation_batch_limit = oracles.validators_exit_rotation_batch_limit
@@ -133,7 +133,7 @@ async def _fetch_exit_signature_block(oracle_endpoint: str) -> BlockNumber | Non
 
 
 async def get_oracles_approval(
-    oracles: Oracles, keystores: Keystores, validators: dict[int, HexStr]
+    oracles: Oracles, keystores: ValidatorKeys, validators: dict[int, HexStr]
 ) -> OraclesApproval:
     """Fetches approval from oracles."""
     fork = await consensus_client.get_consensus_fork()
@@ -168,7 +168,7 @@ async def get_oracles_approval(
     )
 
 
-async def update_exit_signatures_periodically(keystores: Keystores):
+async def update_exit_signatures_periodically(keystores: ValidatorKeys):
     # Oracle may have lag if operator was stopped
     # during `update_exit_signatures_periodically` process.
     # Wait all oracles sync.
