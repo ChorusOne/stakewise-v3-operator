@@ -165,10 +165,14 @@ def load_validator_keys() -> ValidatorKeys | None:
         key_data = requests.get(
             request_url, headers={"X-Vault-Token": settings.hashicorp_vault.token}
         ).json()
-        for pk, sk in key_data["data"]["data"].items():
-            sk_bytes = Web3.to_bytes(hexstr=sk)
-            keys.append((HexStr(pk), BLSPrivkey(sk_bytes)))
-        validator_keys = ValidatorKeys(dict(keys))
+        if "data" in key_data:
+            for pk, sk in key_data["data"]["data"].items():
+                sk_bytes = Web3.to_bytes(hexstr=sk)
+                keys.append((HexStr(pk), BLSPrivkey(sk_bytes)))
+            validator_keys = ValidatorKeys(dict(keys))
+        else:
+            logger.error("Failed to retrieve keys from Vault, response is: %r", key_data)
+            return None
     else:
         keystore_files = list_keystore_files()
         logger.info('Loading keystores from %s...', settings.keystores_dir)
