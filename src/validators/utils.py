@@ -168,7 +168,7 @@ def load_validator_keys() -> ValidatorKeys | None:
         if "data" in key_data:
             for pk, sk in key_data["data"]["data"].items():
                 sk_bytes = Web3.to_bytes(hexstr=sk)
-                keys.append((HexStr(pk), BLSPrivkey(sk_bytes)))
+                keys.append((HexStr("0x{}".format(pk)), BLSPrivkey(sk_bytes)))
             validator_keys = ValidatorKeys(dict(keys))
         else:
             logger.error("Failed to retrieve keys from Vault, response is: %r", key_data)
