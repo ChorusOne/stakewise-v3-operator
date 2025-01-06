@@ -1,9 +1,18 @@
 import json
+import tempfile
+import uuid
 from functools import partial
+from pathlib import Path
 from typing import Generator
 
 import pytest
 from aioresponses import CallbackResult, aioresponses
+
+
+@pytest.fixture(scope='session')
+def jwt_auth_secret() -> str:
+    # Generate unique uuid secret for every run
+    return str(uuid.uuid4())
 
 
 @pytest.fixture
@@ -144,3 +153,198 @@ def mocked_hashi_vault(
             repeat=True,
         )
         yield
+
+
+@pytest.fixture
+def mocked_hashi_vault_oidc_auth(
+    hashi_vault_url: str,
+    jwt_auth_secret: str,
+) -> Generator:
+    # Generated via
+    # eth-staking-smith existing-mnemonic \
+    #   --chain holesky \
+    #   --num_validators 2 \
+    #   --mnemonic 'provide iron update bronze session immense garage want round enhance artefact position make wash analyst skirt float jealous trend spread ginger rapid express tool'
+    _hashi_vault_pk_sk_mapping = {
+        'b05e93c4501233eeb7f1e7b0ee400caaa04608249c4aab61c18e04c675aaf2a0f03808d533c877fbbd57b04927c01ce0': '3eeedd7a6679d2e2036682b6f03ef16105a847321303aec163548aa3fa5e9eeb',
+        'aa84894836cb3d897a1a11344920c41c472ed67667fd8a3453e557214442370ffc1d007ae7af67120de00afa068349be': '236f33410e6972a2db36ba3736099396768219b327e18eae49392f153007d468',
+    }
+
+    # Generated via
+    # eth-staking-smith existing-mnemonic \
+    #   --chain holesky \
+    #   --num_validators 2 \
+    #   --mnemonic 'route flight verb churn work creek crane hole obscure young shaft area bird border refuse usage flash engage burden retreat drama bamboo profit sense'
+    _hashi_vault_prefixed_pk_sk_mapping = {
+        '8b09379ca969e8283a42a09285f430e8bd58c70bb33b44397ae81dac01b1403d0f631f156d211b6931a1c6284e2e469c': '5d88e114821bf871f321399d99fe58cb24d6434b416f112e8e46077e05399dc0',
+        '8979806d4e5d841758868b208df0dd961c12a0cf044e2de1d18e269ca0ad0308672be2f71d3d5606834764fe5b1d0bc4': '01352aec5cadb78eba6f716570d28b40f24b96c522dac535bc81375ceb54bf0b',
+    }
+
+    state_auth = dict(logins=0)
+
+    def _mocked_auth_login(duration, url, **kwargs):
+        if kwargs['json']['jwt'] != jwt_auth_secret:
+            raise AssertionError('Invalid JWT value passed to a mock')
+        state_auth['logins'] += 1
+        return CallbackResult(
+            status=200,
+            body=json.dumps(
+                {
+                    'auth': {
+                        'client_token': str(uuid.uuid4()),
+                        'accessor': str(uuid.uuid4()),
+                        'policies': ['default'],
+                        'metadata': {
+                            'role': kwargs['json']['role'],
+                        },
+                        'lease_duration': duration,
+                        'renewable': True,
+                    }
+                }
+            ),
+        )
+
+    def _mocked_auth_failure(url, **kwargs):
+        return CallbackResult(
+            status=403,
+            body=json.dumps(
+                {
+                    'errors': ['invalid_token'],
+                }
+            ),
+        )
+
+    def _mocked_secret_path(data, url, **kwargs) -> CallbackResult:
+        return CallbackResult(
+            status=200,
+            body=json.dumps(
+                dict(
+                    data=dict(
+                        data=data,
+                    )
+                )
+            ),  # type: ignore
+        )
+
+    def _mocked_secrets_list(data, url, **kwargs) -> CallbackResult:
+        return CallbackResult(
+            status=200,
+            body=json.dumps(
+                dict(
+                    data=dict(
+                        keys=data,
+                    )
+                )
+            ),  # type: ignore
+        )
+
+    state_reauth_list = dict(attempt=0)
+
+    def _mocked_secrets_list_reauth(data, url, **kwargs) -> CallbackResult:
+        state_reauth_list['attempt'] += 1
+        if state_reauth_list['attempt'] == 1:
+            # Yield 403 invalid token on first attempt
+            return CallbackResult(
+                status=403,
+                body=json.dumps(
+                    dict(
+                        errors=['invalid_token'],
+                    )
+                ),  # type: ignore
+            )
+        else:
+            # On aubsequent request after reauth, return normal payload
+
+            # This ensures only one request is done
+            if state_reauth_list['attempt'] != 2:
+                raise AssertionError('Invalid secret list amount done')
+            # This ensures login has been called twice
+            if state_auth['logins'] != 2:
+                raise AssertionError('Invalid amount of logins was performed')
+
+            return CallbackResult(
+                status=200,
+                body=json.dumps(dict(data=dict(keys=data))),  # type: ignore
+            )
+
+    def _mocked_error_path(url, **kwargs) -> CallbackResult:
+        return CallbackResult(
+            status=200, body=json.dumps(dict(errors=list('token not provided')))  # type: ignore
+        )
+
+    with aioresponses() as m:
+        # Successful authentication with lengthy token duration
+        m.post(
+            f'{hashi_vault_url}/v1/auth/kubernetes/login',
+            callback=partial(_mocked_auth_login, 2764800),
+            repeat=True,
+        )
+
+        # Auth with small lease duration to yield is_stale = true
+        # on the failure leading to reauth
+        m.post(
+            f'{hashi_vault_url}/v1/auth/kubernetes_reauth/login',
+            callback=partial(_mocked_auth_login, 0),
+            repeat=True,
+        )
+
+        # Authentication error
+        m.post(
+            f'{hashi_vault_url}/v1/auth/kubernetes_error/login',
+            callback=_mocked_auth_failure,
+            repeat=True,
+        )
+
+        # Mocked bundled signing keys endpoints
+        m.get(
+            f'{hashi_vault_url}/v1/secret/data/ethereum/signing/keystores',
+            callback=partial(_mocked_secret_path, _hashi_vault_pk_sk_mapping),
+            repeat=True,
+        )
+        # Mocked bundled signing keys on reauth endpoint
+        m.get(
+            f'{hashi_vault_url}/v1/secret/data/ethereum/signing/keystores',
+            callback=partial(_mocked_secret_path, _hashi_vault_pk_sk_mapping),
+            repeat=True,
+        )
+        # Mocked prefixed signing keys endpoints
+        m.add(
+            f'{hashi_vault_url}/v1/secret/metadata/ethereum/signing/prefixed1',
+            callback=partial(
+                _mocked_secrets_list, list(_hashi_vault_prefixed_pk_sk_mapping.keys())
+            ),
+            repeat=True,
+            method='LIST',
+        )
+        for _pk, _sk in _hashi_vault_prefixed_pk_sk_mapping.items():
+            m.get(
+                f'{hashi_vault_url}/v1/secret/data/ethereum/signing/prefixed1/{_pk}',
+                callback=partial(_mocked_secret_path, {'value': _sk}),
+                repeat=True,
+            )
+
+        # Mocked prefixed signing keys endpoints with reauth
+        m.add(
+            f'{hashi_vault_url}/v1/secret/metadata/ethereum/signing/prefixed2',
+            callback=partial(
+                _mocked_secrets_list_reauth, list(_hashi_vault_prefixed_pk_sk_mapping.keys())
+            ),
+            repeat=True,
+            method='LIST',
+        )
+        for _pk, _sk in _hashi_vault_prefixed_pk_sk_mapping.items():
+            m.get(
+                f'{hashi_vault_url}/v1/secret/data/ethereum/signing/prefixed2/{_pk}',
+                callback=partial(_mocked_secret_path, {'value': _sk}),
+                repeat=True,
+            )
+
+        yield
+
+
+@pytest.fixture
+def mocked_jwt_auth_file(jwt_auth_secret: str) -> Generator:
+    with tempfile.NamedTemporaryFile('w', delete=False) as jwt_auth:
+        jwt_auth.write(jwt_auth_secret)
+        jwt_auth.flush()
+        yield Path(jwt_auth.name)

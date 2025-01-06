@@ -2,7 +2,7 @@ import logging
 
 from src.config.settings import settings
 from src.validators.keystores.base import BaseKeystore
-from src.validators.keystores.hashi_vault import HashiVaultKeystore
+from src.validators.keystores.hashi_vault.loader import HashiVaultKeystore
 from src.validators.keystores.local import LocalKeystore
 from src.validators.keystores.remote import RemoteSignerKeystore
 

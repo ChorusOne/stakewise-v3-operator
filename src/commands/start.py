@@ -13,6 +13,8 @@ from src.common.validators import validate_eth_address
 from src.common.vault_config import VaultConfig
 from src.config.networks import AVAILABLE_NETWORKS
 from src.config.settings import (
+    DEFAULT_HASHI_VAULT_JWT_FILE,
+    DEFAULT_HASHI_VAULT_OIDC_MOUNT,
     DEFAULT_HASHI_VAULT_PARALLELISM,
     DEFAULT_MAX_FEE_PER_GAS_GWEI,
     DEFAULT_METRICS_HOST,
@@ -178,6 +180,23 @@ logger = logging.getLogger(__name__)
     help='Authentication token for accessing Hashi vault.',
 )
 @click.option(
+    '--hashi-vault-oidc-auth-role',
+    envvar='HASHI_VAULT_OIDC_AUTH_ROLE',
+    help='A role to use when authenticating via OID Connect with Hashi vault.',
+)
+@click.option(
+    '--hashi-vault-oidc-auth-mount-point',
+    envvar='HASHI_VAULT_OIDC_AUTH_MOUNT_POINT',
+    help='A role to use when authenticating via OID Connect with Hashi vault.',
+    default=DEFAULT_HASHI_VAULT_OIDC_MOUNT,
+)
+@click.option(
+    '--hashi-vault-jwt-auth-file',
+    envvar='HASHI_VAULT_JWT_FILE',
+    help='A path to file that contains JWT content for dynamically authenticating via OID Connect.',
+    default=DEFAULT_HASHI_VAULT_JWT_FILE,
+)
+@click.option(
     '--hashi-vault-key-path',
     envvar='HASHI_VAULT_KEY_PATH',
     multiple=True,
@@ -252,6 +271,9 @@ def start(
     hashi_vault_key_path: list[str] | None,
     hashi_vault_key_prefix: list[str] | None,
     hashi_vault_token: str | None,
+    hashi_vault_oidc_auth_role: str | None,
+    hashi_vault_oidc_auth_mount_point: str | None,
+    hashi_vault_jwt_auth_file: str | None,
     hashi_vault_url: str | None,
     hashi_vault_parallelism: int,
     hot_wallet_file: str | None,
@@ -284,6 +306,9 @@ def start(
         keystores_password_file=keystores_password_file,
         remote_signer_url=remote_signer_url,
         hashi_vault_token=hashi_vault_token,
+        hashi_vault_auth_mount=hashi_vault_oidc_auth_mount_point,
+        hashi_vault_auth_role=hashi_vault_oidc_auth_role,
+        hashi_vault_jwt_file=hashi_vault_jwt_auth_file,
         hashi_vault_key_paths=hashi_vault_key_path,
         hashi_vault_key_prefixes=hashi_vault_key_prefix,
         hashi_vault_parallelism=hashi_vault_parallelism,

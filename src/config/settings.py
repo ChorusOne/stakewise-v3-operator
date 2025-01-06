@@ -21,6 +21,8 @@ DEFAULT_MIN_VALIDATORS_REGISTRATION = 1
 
 DEFAULT_HASHI_VAULT_PARALLELISM = 8
 DEFAULT_HASHI_VAULT_ENGINE_NAME = 'secret'
+DEFAULT_HASHI_VAULT_JWT_FILE = '/var/run/secrets/kubernetes.io/serviceaccount/token'
+DEFAULT_HASHI_VAULT_OIDC_MOUNT = 'kubernetes'
 
 
 # pylint: disable-next=too-many-public-methods,too-many-instance-attributes
@@ -57,6 +59,9 @@ class Settings(metaclass=Singleton):
     hashi_vault_url: str | None
     hashi_vault_engine_name: str
     hashi_vault_token: str | None
+    hashi_vault_jwt_file: Path | None
+    hashi_vault_auth_mount: str | None
+    hashi_vault_auth_role: str | None
     hashi_vault_parallelism: int
     hot_wallet_file: Path
     hot_wallet_password_file: Path
@@ -121,6 +126,9 @@ class Settings(metaclass=Singleton):
         hashi_vault_url: str | None = None,
         hashi_vault_engine_name: str = DEFAULT_HASHI_VAULT_ENGINE_NAME,
         hashi_vault_token: str | None = None,
+        hashi_vault_jwt_file: str | None = DEFAULT_HASHI_VAULT_JWT_FILE,
+        hashi_vault_auth_mount: str | None = DEFAULT_HASHI_VAULT_OIDC_MOUNT,
+        hashi_vault_auth_role: str | None = None,
         hashi_vault_parallelism: int = DEFAULT_HASHI_VAULT_PARALLELISM,
         hot_wallet_file: str | None = None,
         hot_wallet_password_file: str | None = None,
@@ -187,6 +195,11 @@ class Settings(metaclass=Singleton):
         self.hashi_vault_key_paths = hashi_vault_key_paths
         self.hashi_vault_key_prefixes = hashi_vault_key_prefixes
         self.hashi_vault_token = hashi_vault_token
+        self.hashi_vault_jwt_file = (
+            Path(hashi_vault_jwt_file) if hashi_vault_jwt_file is not None else None
+        )
+        self.hashi_vault_auth_mount = hashi_vault_auth_mount
+        self.hashi_vault_auth_role = hashi_vault_auth_role
         self.hashi_vault_parallelism = hashi_vault_parallelism
 
         # hot wallet
@@ -310,8 +323,9 @@ REMOTE_SIGNER_UPLOAD_CHUNK_SIZE = decouple_config(
 )
 REMOTE_SIGNER_TIMEOUT = decouple_config('REMOTE_SIGNER_TIMEOUT', cast=int, default=30)
 
-# Hashi vault timeout
+# Hashi vault timeouts
 HASHI_VAULT_TIMEOUT = 10
+HASHI_VAULT_OIDC_LOGIN_TIMEOUT = 60
 
 # Graphql timeout
 GRAPH_API_TIMEOUT = 10
